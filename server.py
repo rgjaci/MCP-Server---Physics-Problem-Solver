@@ -5,6 +5,7 @@ import json # For parsing Gemini's output
 from google import genai
 from dotenv import load_dotenv # To load .env file
 import sympy
+import time # Added for timing logs
 
 # Load environment variables from .env file
 load_dotenv()
@@ -338,10 +339,16 @@ async def solve_physics_problem(params: SolvePhysicsProblemInput) -> SolvePhysic
     retrieved_equations_latex = []
     given_values_parsed = []
     target_unknown_parsed = "Not identified"
+    retrieval_duration = 0 # Initialize duration
 
     try:
         print("Asking Gemini for retrieval plan...")
+        retrieval_start_time = time.time() # Start timer
         response_retrieve = await client.aio.models.generate_content(model=gemini_model.name, contents=prompt_retrieve)
+        retrieval_end_time = time.time() # End timer
+        retrieval_duration = retrieval_end_time - retrieval_start_time
+        print(f"DEBUG: Gemini retrieval plan call took {retrieval_duration:.2f} seconds.")
+        
         retrieval_plan_json_text = response_retrieve.text.strip()
         if retrieval_plan_json_text.startswith("```json"):
             retrieval_plan_json_text = retrieval_plan_json_text[len("```json"):]
@@ -466,9 +473,14 @@ async def solve_physics_problem(params: SolvePhysicsProblemInput) -> SolvePhysic
     Begin the explanation:
     """
     explanation_text = "Explanation generation encountered an issue."
+    explanation_duration = 0 # Initialize duration
     try:
         print("Asking Gemini for explanation...")
+        explanation_start_time = time.time() # Start timer
         response_explain = await client.aio.models.generate_content(model=gemini_model.name, contents=prompt_explain)
+        explanation_end_time = time.time() # End timer
+        explanation_duration = explanation_end_time - explanation_start_time
+        print(f"DEBUG: Gemini explanation generation call took {explanation_duration:.2f} seconds.")
         explanation_text = response_explain.text.strip()
     except Exception as e:
         print(f"Error in Gemini explanation generation: {e}")
@@ -480,7 +492,7 @@ async def solve_physics_problem(params: SolvePhysicsProblemInput) -> SolvePhysic
     if final_answer_str:
         current_status = "solved_with_explanation"
 
-
+    print(f"DEBUG: Total time spent in Gemini calls: {retrieval_duration + explanation_duration:.2f} seconds.") # Total time log
     return SolvePhysicsProblemOutput(
         original_question=question,
         identified_concepts=retrieved_concept_names,
