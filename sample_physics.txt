@@ -1,0 +1,3 @@
+Force is defined as mass times acceleration. The formula is F = m * a.
+Energy (E) can be related to mass (m) and the speed of light (c) by the equation E=mc^2.
+A key concept in mechanics is momentum, which is the product of mass and velocity (p = mv).
