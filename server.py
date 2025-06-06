@@ -5,7 +5,6 @@ import json # For parsing Gemini's output
 from google import genai
 from dotenv import load_dotenv # To load .env file
 import sympy
-import time # Added for timing logs
 
 # Load environment variables from .env file
 load_dotenv()
@@ -339,16 +338,10 @@ async def solve_physics_problem(params: SolvePhysicsProblemInput) -> SolvePhysic
     retrieved_equations_latex = []
     given_values_parsed = []
     target_unknown_parsed = "Not identified"
-    retrieval_duration = 0
 
     try:
         print("Asking Gemini for retrieval plan...")
-        retrieval_start_time = time.time()
         response_retrieve = await client.aio.models.generate_content(model=gemini_model.name, contents=prompt_retrieve)
-        retrieval_end_time = time.time()
-        retrieval_duration = retrieval_end_time - retrieval_start_time
-        print(f"DEBUG: Gemini retrieval plan call took {retrieval_duration:.2f} seconds.")
-
         retrieval_plan_json_text = response_retrieve.text.strip()
         if retrieval_plan_json_text.startswith("```json"):
             retrieval_plan_json_text = retrieval_plan_json_text[len("```json"):]
@@ -440,12 +433,8 @@ async def solve_physics_problem(params: SolvePhysicsProblemInput) -> SolvePhysic
     if final_answer_str: print(f"Final Answer (Conceptual): {final_answer_str}")
 
 
-    # --- Stage 3: Gemini for Explanation and Solution Synthesis ---
-    # This stage will use the analyzed information to generate a coherent answer.
-
-    prompt_solve_and_explain = f"""
-    You are a physics problem solver and explainer.
-
+    # --- Stage 3: Gemini for Explanation Generation ---
+    prompt_explain = f"""
     Original Physics Question: "{question}"
 
     Identified Key Concepts:
@@ -476,35 +465,22 @@ async def solve_physics_problem(params: SolvePhysicsProblemInput) -> SolvePhysic
 
     Begin the explanation:
     """
-    explanation_text = "Could not generate a full explanation."
-    solution_synthesis_duration = 0
-
+    explanation_text = "Explanation generation encountered an issue."
     try:
-        print("Asking Gemini for final solution and explanation...")
-        solution_synthesis_start_time = time.time()
-        response_solve = await client.aio.models.generate_content(model=gemini_model.name, contents=prompt_solve_and_explain)
-        solution_synthesis_end_time = time.time()
-        solution_synthesis_duration = solution_synthesis_end_time - solution_synthesis_start_time
-        print(f"DEBUG: Gemini solution synthesis call took {solution_synthesis_duration:.2f} seconds.")
-        
-        # Clean potential markdown and extract JSON (if expecting JSON)
-        # For now, let's assume it's mostly text, but could be structured.
-        explanation_text = response_solve.text.strip()
-
+        print("Asking Gemini for explanation...")
+        response_explain = await client.aio.models.generate_content(model=gemini_model.name, contents=prompt_explain)
+        explanation_text = response_explain.text.strip()
     except Exception as e:
-        print(f"Error in Gemini solution synthesis: {e}")
-        # Populate with what we have, even if synthesis fails
-        return SolvePhysicsProblemOutput(
-            original_question=question,
-            identified_concepts=retrieved_concept_names,
-            relevant_equations_latex=retrieved_equations_latex,
-            symbolic_solution_steps=symbolic_steps_str,
-            final_answer=final_answer_str,
-            explanation="Error during explanation generation.",
-            status="error_explanation"
-        )
+        print(f"Error in Gemini explanation generation: {e}")
+        explanation_text = f"Error generating final explanation: {e}"
 
-    print(f"DEBUG: Total time spent in Gemini calls: {retrieval_duration + solution_synthesis_duration:.2f} seconds.")
+    current_status = "explanation_provided"
+    if "error" in symbolic_steps_str.lower() or not retrieved_equations_latex :
+        current_status = "partial_explanation_due_to_solver_limitations"
+    if final_answer_str:
+        current_status = "solved_with_explanation"
+
+
     return SolvePhysicsProblemOutput(
         original_question=question,
         identified_concepts=retrieved_concept_names,
@@ -512,7 +488,7 @@ async def solve_physics_problem(params: SolvePhysicsProblemInput) -> SolvePhysic
         symbolic_solution_steps=symbolic_steps_str,
         final_answer=final_answer_str,
         explanation=explanation_text,
-        status="explanation_provided"
+        status=current_status
     )
 
 # In the future, you will add your MCP tool and resource handlers here.
